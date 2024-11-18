@@ -5,8 +5,8 @@ import cv2
 CONFIG_PATH = "GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py"
 CHECKPOINT_PATH = "./groundingdino_swint_ogc.pth"
 DEVICE = "cuda"
-IMAGE_FOLDER = "/home/dasc/niba/peerRobotics/data/raw"
-IMAGE_PATH = IMAGE_FOLDER + "543202-7201_jpg.rf.06dd4762d69c0fdf739b25d3d551a04a.jpg"
+IMAGE_FOLDER = "/home/appuser/data/raw/"
+IMAGE_PATH = IMAGE_FOLDER + "1943230-206_jpg.rf.a9ff94a8a8714fcc18e86d23b8eddf38.jpg"
 TEXT_PROMPT = "Pallets. Ground."
 BOX_TRESHOLD = 0.35
 TEXT_TRESHOLD = 0.25

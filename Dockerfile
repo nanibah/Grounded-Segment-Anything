@@ -10,7 +10,8 @@ ENV TORCH_CUDA_ARCH_LIST="${TORCH_ARCH}"
 ENV CUDA_HOME=/usr/local/cuda-11.6/
 
 RUN mkdir -p /home/appuser/Grounded-Segment-Anything
-COPY . /home/appuser/Grounded-Segment-Anything/
+COPY data/raw/ /home/appuser/data/raw/
+COPY Grounded-Segment-Anything/ /home/appuser/Grounded-Segment-Anything/
 
 RUN apt-get update && apt-get install --no-install-recommends wget ffmpeg=7:* \
     libsm6=2:* libxext6=2:* git=1:* nano=2.* \
