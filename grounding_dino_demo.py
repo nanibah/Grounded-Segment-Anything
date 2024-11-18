@@ -5,8 +5,9 @@ import cv2
 CONFIG_PATH = "GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py"
 CHECKPOINT_PATH = "./groundingdino_swint_ogc.pth"
 DEVICE = "cuda"
-IMAGE_PATH = "assets/demo7.jpg"
-TEXT_PROMPT = "Horse. Clouds. Grasses. Sky. Hill."
+IMAGE_FOLDER = "/home/dasc/niba/peerRobotics/data/raw"
+IMAGE_PATH = IMAGE_FOLDER + "543202-7201_jpg.rf.06dd4762d69c0fdf739b25d3d551a04a.jpg"
+TEXT_PROMPT = "Pallets. Ground."
 BOX_TRESHOLD = 0.35
 TEXT_TRESHOLD = 0.25
 FP16_INFERENCE = True
@@ -14,9 +15,9 @@ FP16_INFERENCE = True
 image_source, image = load_image(IMAGE_PATH)
 model = load_model(CONFIG_PATH, CHECKPOINT_PATH)
 
-if FP16_INFERENCE:
-    image = image.half()
-    model = model.half()
+# if FP16_INFERENCE:
+#     image = image.half()
+#     model = model.half()
 
 boxes, logits, phrases = predict(
     model=model,
