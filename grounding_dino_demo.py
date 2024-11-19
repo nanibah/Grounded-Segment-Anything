@@ -45,10 +45,23 @@ for image_name in os.listdir(IMAGE_FOLDER):
             x_min, y_min, x_max, y_max = box
             label = phrases[i]
             confidence = logits[i]
-            
-            result_file.write(f"Bounding Box {i}: ({x_min}, {y_min}), ({x_max}, {y_max})\n")
-            result_file.write(f"Label: {label}\n")
-            result_file.write(f"Confidence: {confidence}\n\n")
+
+            if(label == 'ground'):
+                calss_id = 0
+            elif(label == 'pallets'):
+                calss_id = 1
+
+            x_center = (x_min + x_max) / 2
+            y_center = (y_min + y_max) / 2
+            width = abs(x_max - x_min)
+            height = abs(y_max - y_min)
+
+            result_file.write(f"{calss_id} {x_center} {y_center} {width} {height}\n")            
+            # result_file.write 
+            # result_file.write(f"Bounding Box {i}: ({x_min}, {y_min}), ({x_max}, {y_max})\n")
+            # result_file.write(f"Label: {label}\n")
+            # result_file.write(f"Confidence: {confidence}\n\n")
+             
 
     print(f"Predictions for {image_name} saved to {result_file_path}")
     annotated_frame = annotate(image_source=image_source, boxes=boxes, logits=logits, phrases=phrases)
