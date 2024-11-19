@@ -7,9 +7,9 @@ import json
 import torch
 from PIL import Image
 
-
 sys.path.append(os.path.join(os.getcwd(), "GroundingDINO"))
 sys.path.append(os.path.join(os.getcwd(), "segment_anything"))
+
 
 # Grounding DINO
 import GroundingDINO.groundingdino.datasets.transforms as T
@@ -22,8 +22,7 @@ from GroundingDINO.groundingdino.util.utils import clean_state_dict, get_phrases
 from segment_anything import (
     sam_model_registry,
     sam_hq_model_registry,
-    SamPredictor,
-    SamAutomaticMaskGenerator
+    SamPredictor
 )
 import cv2
 import numpy as np
@@ -157,10 +156,10 @@ if __name__ == "__main__":
     parser.add_argument('--config', type=str, default=GROUNDING_DINO_CONFIG_PATH, help='Path to config file')
     parser.add_argument('--grounded_checkpoint', type=str, default=GROUNDING_DINO_CHECKPOINT_PATH, help='Path to grounded model checkpoint')
     parser.add_argument("--sam_version", type=str, default="vit_h", required=False, help="SAM ViT version: vit_b / vit_l / vit_h")
-    parser.add_argument("--sam_checkpoint", type=str, required=False, help="path to sam checkpoint file")
+    parser.add_argument("--sam_checkpoint", type=str, default=SAM_CHECKPOINT_PATH, required=False, help="path to sam checkpoint file")
     parser.add_argument("--sam_hq_checkpoint", type=str, default=None, help="path to sam-hq checkpoint file")
     parser.add_argument("--use_sam_hq", action="store_true", help="using sam-hq for prediction")
-    # parser.add_argument("--input_image", type=str, required=True, help="path to image file")
+    parser.add_argument("--input_image", type=str, default="assets/demo1.jpg", help="path to image file")
     parser.add_argument("--text_prompt", type=str, default="ground, pallets", help="text prompt")
     parser.add_argument("--output_dir", "-o", type=str, default=OUTPUT_DIR, help="output directory")
     parser.add_argument("--box_threshold", type=float, default=0.3, help="box threshold")
@@ -203,23 +202,23 @@ if __name__ == "__main__":
         image_path = os.path.join(SOURCE_IMAGE_FOLDER, image_name)
         # load image
         image_pil, image = load_image(image_path)
-        # # visualize raw image
-        # image_pil.save(os.path.join(output_dir, "raw_image.jpg"))
+        # visualize raw image
+        # Prepare the output directory for each image
+        base_name = os.path.splitext(image_name)[0]
+        image_output_dir = os.path.join(OUTPUT_DIR, base_name)
+        os.makedirs(image_output_dir, exist_ok=True)
+        # image_pil.save(os.path.join(image_output_dir, "raw_image.jpg"))
 
         # run grounding dino model
         boxes_filt, pred_phrases = get_grounding_output(
             model, image, text_prompt, box_threshold, text_threshold, device=device
         )
-        print(f"boxes_filt: {boxes_filt} \npred_phrases:{pred_phrases}")
-        print("Finished running grounding dino model")
-
-        # Prepare the output directory for each image
-        base_name = os.path.splitext(image_name)[0]
-        image_output_dir = os.path.join(OUTPUT_DIR, base_name)
-        os.makedirs(image_output_dir, exist_ok=True)
+        # print(f"boxes_filt: {boxes_filt} \npred_phrases:{pred_phrases}")
+        # print("Finished running grounding dino model")
 
         # Process with SAM
         image = cv2.imread(image_path)
+        # print(type(image), image.shape, image)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         predictor.set_image(image)
         # mask_generator = SamAutomaticMaskGenerator(sam)
@@ -236,7 +235,6 @@ if __name__ == "__main__":
 
         boxes_filt = boxes_filt.cpu()
         transformed_boxes = predictor.transform.apply_boxes_torch(boxes_filt, image.shape[:2]).to(device)
-        print(f"transformed_boxes: {transformed_boxes}")
 
         masks, _, _ = predictor.predict_torch(
             point_coords = None,
@@ -244,12 +242,16 @@ if __name__ == "__main__":
             boxes = transformed_boxes.to(device),
             multimask_output = False,
         )
-        print(f"masks: {type(masks)}, {masks.shape} \n{masks}")
-        mask_1 = masks[0, 0, :, :].cpu().numpy()  # Mask 1
-        mask_2 = masks[1, 0, :, :].cpu().numpy()  # Mask 2
-        combined_mask = np.concatenate((mask_1, mask_2), axis=1)
-        combined_mask = (combined_mask * 255).astype(np.uint8)
-        cv2.imwrite(os.path.join(image_output_dir, "cobined_mask.jpg"), combined_mask)
+        # print(f"masks: {type(masks)}, {masks.shape}")
+        # mask_list = []
+        # for i in range(masks.shape[0]):
+        #     for c in range(masks.shape[1]):  # Iterate through classes (if C > 1)
+        #         mask = masks[i, c, :, :].cpu().numpy()  # Extract each mask
+        #         mask = (mask * 255).astype(np.uint8)  # Convert to uint8 and scale by 255
+        #         mask_list.append(mask)  # Append mask to the list
+
+        # combined_mask = np.concatenate(mask_list, axis=1)  # Use axis=0 for vertical concatenation
+        # cv2.imwrite(os.path.join(image_output_dir, "cobined_mask.jpg"), combined_mask)
 
         # draw output image
         plt.figure(figsize=(10, 10))
@@ -264,8 +266,7 @@ if __name__ == "__main__":
             os.path.join(image_output_dir, "grounded_sam_output.jpg"),
             bbox_inches="tight", dpi=300, pad_inches=0.0
         )
-        print("Saved grounded sam image")
 
         save_mask_data(image_output_dir, masks, boxes_filt, pred_phrases)
-        print("Saved mask data")
+        # print("Saved mask data")
         print(f"Finished processing {image_name}")
