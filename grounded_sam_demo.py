@@ -7,9 +7,9 @@ import json
 import torch
 from PIL import Image
 
+
 sys.path.append(os.path.join(os.getcwd(), "GroundingDINO"))
 sys.path.append(os.path.join(os.getcwd(), "segment_anything"))
-
 
 # Grounding DINO
 import GroundingDINO.groundingdino.datasets.transforms as T
@@ -22,7 +22,8 @@ from GroundingDINO.groundingdino.util.utils import clean_state_dict, get_phrases
 from segment_anything import (
     sam_model_registry,
     sam_hq_model_registry,
-    SamPredictor
+    SamPredictor,
+    SamAutomaticMaskGenerator
 )
 import cv2
 import numpy as np
@@ -138,33 +139,32 @@ def save_mask_data(output_dir, mask_list, box_list, label_list):
 
 
 if __name__ == "__main__":
+    
+    # GroundingDINO config and checkpoint
+    GROUNDING_DINO_CONFIG_PATH = "GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py"
+    GROUNDING_DINO_CHECKPOINT_PATH = "groundingdino_swint_ogc.pth" #./
+
+    # Segment-Anything checkpoint
+    SAM_ENCODER_VERSION = "vit_h"
+    SAM_CHECKPOINT_PATH = "sam_vit_h_4b8939.pth"
+
+    # Predict classes and hyper-param for GroundingDINO
+    SOURCE_IMAGE_FOLDER = "/home/appuser/data/raw/"
+    # SOURCE_IMAGE_PATH = SOURCE_IMAGE_FOLDER + "1943230-206_jpg.rf.a9ff94a8a8714fcc18e86d23b8eddf38.jpg"
+    OUTPUT_DIR = "/home/appuser/data/annotations/segmentation"
 
     parser = argparse.ArgumentParser("Grounded-Segment-Anything Demo", add_help=True)
-    parser.add_argument("--config", type=str, required=True, help="path to config file")
-    parser.add_argument(
-        "--grounded_checkpoint", type=str, required=True, help="path to checkpoint file"
-    )
-    parser.add_argument(
-        "--sam_version", type=str, default="vit_h", required=False, help="SAM ViT version: vit_b / vit_l / vit_h"
-    )
-    parser.add_argument(
-        "--sam_checkpoint", type=str, required=False, help="path to sam checkpoint file"
-    )
-    parser.add_argument(
-        "--sam_hq_checkpoint", type=str, default=None, help="path to sam-hq checkpoint file"
-    )
-    parser.add_argument(
-        "--use_sam_hq", action="store_true", help="using sam-hq for prediction"
-    )
-    parser.add_argument("--input_image", type=str, required=True, help="path to image file")
-    parser.add_argument("--text_prompt", type=str, required=True, help="text prompt")
-    parser.add_argument(
-        "--output_dir", "-o", type=str, default="outputs", required=True, help="output directory"
-    )
-
+    parser.add_argument('--config', type=str, default=GROUNDING_DINO_CONFIG_PATH, help='Path to config file')
+    parser.add_argument('--grounded_checkpoint', type=str, default=GROUNDING_DINO_CHECKPOINT_PATH, help='Path to grounded model checkpoint')
+    parser.add_argument("--sam_version", type=str, default="vit_h", required=False, help="SAM ViT version: vit_b / vit_l / vit_h")
+    parser.add_argument("--sam_checkpoint", type=str, required=False, help="path to sam checkpoint file")
+    parser.add_argument("--sam_hq_checkpoint", type=str, default=None, help="path to sam-hq checkpoint file")
+    parser.add_argument("--use_sam_hq", action="store_true", help="using sam-hq for prediction")
+    # parser.add_argument("--input_image", type=str, required=True, help="path to image file")
+    parser.add_argument("--text_prompt", type=str, default="ground, pallets", help="text prompt")
+    parser.add_argument("--output_dir", "-o", type=str, default=OUTPUT_DIR, help="output directory")
     parser.add_argument("--box_threshold", type=float, default=0.3, help="box threshold")
     parser.add_argument("--text_threshold", type=float, default=0.25, help="text threshold")
-
     parser.add_argument("--device", type=str, default="cpu", help="running on cpu only!, default=False")
     parser.add_argument("--bert_base_uncased_path", type=str, required=False, help="bert_base_uncased model path, default=False")
     args = parser.parse_args()
@@ -176,7 +176,7 @@ if __name__ == "__main__":
     sam_checkpoint = args.sam_checkpoint
     sam_hq_checkpoint = args.sam_hq_checkpoint
     use_sam_hq = args.use_sam_hq
-    image_path = args.input_image
+    # image_path = args.input_image
     text_prompt = args.text_prompt
     output_dir = args.output_dir
     box_threshold = args.box_threshold
@@ -186,57 +186,86 @@ if __name__ == "__main__":
 
     # make dir
     os.makedirs(output_dir, exist_ok=True)
-    # load image
-    image_pil, image = load_image(image_path)
     # load model
     model = load_model(config_file, grounded_checkpoint, bert_base_uncased_path, device=device)
-
-    # visualize raw image
-    image_pil.save(os.path.join(output_dir, "raw_image.jpg"))
-
-    # run grounding dino model
-    boxes_filt, pred_phrases = get_grounding_output(
-        model, image, text_prompt, box_threshold, text_threshold, device=device
-    )
+    print("Loaded model")
 
     # initialize SAM
     if use_sam_hq:
         predictor = SamPredictor(sam_hq_model_registry[sam_version](checkpoint=sam_hq_checkpoint).to(device))
     else:
         predictor = SamPredictor(sam_model_registry[sam_version](checkpoint=sam_checkpoint).to(device))
-    image = cv2.imread(image_path)
-    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    predictor.set_image(image)
+    # sam = sam_model_registry[sam_version](checkpoint=sam_checkpoint)
 
-    size = image_pil.size
-    H, W = size[1], size[0]
-    for i in range(boxes_filt.size(0)):
-        boxes_filt[i] = boxes_filt[i] * torch.Tensor([W, H, W, H])
-        boxes_filt[i][:2] -= boxes_filt[i][2:] / 2
-        boxes_filt[i][2:] += boxes_filt[i][:2]
+    print("Initialised SAM")
 
-    boxes_filt = boxes_filt.cpu()
-    transformed_boxes = predictor.transform.apply_boxes_torch(boxes_filt, image.shape[:2]).to(device)
+    for image_name in os.listdir(SOURCE_IMAGE_FOLDER):
+        image_path = os.path.join(SOURCE_IMAGE_FOLDER, image_name)
+        # load image
+        image_pil, image = load_image(image_path)
+        # # visualize raw image
+        # image_pil.save(os.path.join(output_dir, "raw_image.jpg"))
 
-    masks, _, _ = predictor.predict_torch(
-        point_coords = None,
-        point_labels = None,
-        boxes = transformed_boxes.to(device),
-        multimask_output = False,
-    )
+        # run grounding dino model
+        boxes_filt, pred_phrases = get_grounding_output(
+            model, image, text_prompt, box_threshold, text_threshold, device=device
+        )
+        print(f"boxes_filt: {boxes_filt} \npred_phrases:{pred_phrases}")
+        print("Finished running grounding dino model")
 
-    # draw output image
-    plt.figure(figsize=(10, 10))
-    plt.imshow(image)
-    for mask in masks:
-        show_mask(mask.cpu().numpy(), plt.gca(), random_color=True)
-    for box, label in zip(boxes_filt, pred_phrases):
-        show_box(box.numpy(), plt.gca(), label)
+        # Prepare the output directory for each image
+        base_name = os.path.splitext(image_name)[0]
+        image_output_dir = os.path.join(OUTPUT_DIR, base_name)
+        os.makedirs(image_output_dir, exist_ok=True)
 
-    plt.axis('off')
-    plt.savefig(
-        os.path.join(output_dir, "grounded_sam_output.jpg"),
-        bbox_inches="tight", dpi=300, pad_inches=0.0
-    )
+        # Process with SAM
+        image = cv2.imread(image_path)
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        predictor.set_image(image)
+        # mask_generator = SamAutomaticMaskGenerator(sam)
+        # masks = mask_generator.generate(image)
+        # print(type(image), type(masks), masks)
+        # # cv2.imwrite(image_output_dir, np.array(masks))
 
-    save_mask_data(output_dir, masks, boxes_filt, pred_phrases)
+        size = image_pil.size
+        H, W = size[1], size[0]
+        for i in range(boxes_filt.size(0)):
+            boxes_filt[i] = boxes_filt[i] * torch.Tensor([W, H, W, H])
+            boxes_filt[i][:2] -= boxes_filt[i][2:] / 2
+            boxes_filt[i][2:] += boxes_filt[i][:2]
+
+        boxes_filt = boxes_filt.cpu()
+        transformed_boxes = predictor.transform.apply_boxes_torch(boxes_filt, image.shape[:2]).to(device)
+        print(f"transformed_boxes: {transformed_boxes}")
+
+        masks, _, _ = predictor.predict_torch(
+            point_coords = None,
+            point_labels = None,
+            boxes = transformed_boxes.to(device),
+            multimask_output = False,
+        )
+        print(f"masks: {type(masks)}, {masks.shape} \n{masks}")
+        mask_1 = masks[0, 0, :, :].cpu().numpy()  # Mask 1
+        mask_2 = masks[1, 0, :, :].cpu().numpy()  # Mask 2
+        combined_mask = np.concatenate((mask_1, mask_2), axis=1)
+        combined_mask = (combined_mask * 255).astype(np.uint8)
+        cv2.imwrite(os.path.join(image_output_dir, "cobined_mask.jpg"), combined_mask)
+
+        # draw output image
+        plt.figure(figsize=(10, 10))
+        plt.imshow(image)
+        for mask in masks:
+            show_mask(mask.cpu().numpy(), plt.gca(), random_color=True)
+        for box, label in zip(boxes_filt, pred_phrases):
+            show_box(box.numpy(), plt.gca(), label)
+
+        plt.axis('off')
+        plt.savefig(
+            os.path.join(image_output_dir, "grounded_sam_output.jpg"),
+            bbox_inches="tight", dpi=300, pad_inches=0.0
+        )
+        print("Saved grounded sam image")
+
+        save_mask_data(image_output_dir, masks, boxes_filt, pred_phrases)
+        print("Saved mask data")
+        print(f"Finished processing {image_name}")
