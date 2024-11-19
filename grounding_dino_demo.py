@@ -56,6 +56,7 @@ for image_name in os.listdir(IMAGE_FOLDER):
             width = abs(x_max - x_min)
             height = abs(y_max - y_min)
 
+            # format required by yolo
             result_file.write(f"{calss_id} {x_center} {y_center} {width} {height}\n")            
             # result_file.write 
             # result_file.write(f"Bounding Box {i}: ({x_min}, {y_min}), ({x_max}, {y_max})\n")
