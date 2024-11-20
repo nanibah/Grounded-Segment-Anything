@@ -58,11 +58,6 @@ for image_name in os.listdir(IMAGE_FOLDER):
 
             # format required by yolo
             result_file.write(f"{calss_id} {x_center} {y_center} {width} {height}\n")            
-            # result_file.write 
-            # result_file.write(f"Bounding Box {i}: ({x_min}, {y_min}), ({x_max}, {y_max})\n")
-            # result_file.write(f"Label: {label}\n")
-            # result_file.write(f"Confidence: {confidence}\n\n")
-             
 
     print(f"Predictions for {image_name} saved to {result_file_path}")
     annotated_frame = annotate(image_source=image_source, boxes=boxes, logits=logits, phrases=phrases)
